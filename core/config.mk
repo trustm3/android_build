@@ -167,6 +167,33 @@ include $(BUILD_SYSTEM)/envsetup.mk
 # See envsetup.mk for a description of SCAN_EXCLUDE_DIRS
 FIND_LEAVES_EXCLUDES := $(addprefix --prune=, $(OUT_DIR) $(SCAN_EXCLUDE_DIRS) .repo .git)
 
+# Boards may be defined under $(SRC_TARGET_DIR)/board/$(TARGET_DEVICE)
+# or under vendor/*/$(TARGET_DEVICE).  Search in both places, but
+# make sure only one exists.
+# Real boards should always be associated with an OEM vendor.
+board_config_mk := \
+	$(strip $(wildcard \
+		$(SRC_TARGET_DIR)/board/$(TARGET_DEVICE)/BoardConfig.mk \
+		$(shell test -d device && find device -maxdepth 4 -path '*/$(TARGET_DEVICE)/BoardConfig.mk') \
+		$(shell test -d vendor && find vendor -maxdepth 4 -path '*/$(TARGET_DEVICE)/BoardConfig.mk') \
+	))
+ifeq ($(board_config_mk),)
+  $(error No config file found for TARGET_DEVICE $(TARGET_DEVICE))
+endif
+ifneq ($(words $(board_config_mk)),1)
+  $(error Multiple board config files for TARGET_DEVICE $(TARGET_DEVICE): $(board_config_mk))
+endif
+include $(board_config_mk)
+ifeq ($(TARGET_ARCH),)
+  $(error TARGET_ARCH not defined by board config: $(board_config_mk))
+endif
+ifneq ($(MALLOC_IMPL),)
+  $(warning *** Unsupported option MALLOC_IMPL defined by board config: $(board_config_mk).)
+  $(error Use `MALLOC_SVELTE := true` to configure jemalloc for low-memory)
+endif
+TARGET_DEVICE_DIR := $(patsubst %/,%,$(dir $(board_config_mk)))
+board_config_mk :=
+
 # The build system exposes several variables for where to find the kernel
 # headers:
 #   TARGET_DEVICE_KERNEL_HEADERS is automatically created for the current
